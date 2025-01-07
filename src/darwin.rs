@@ -99,7 +99,9 @@ impl DarwinMouseManager {
                     CGEventType::RightMouseUp => Some(MouseEvent::Release(MouseButton::Right)),
                     CGEventType::OtherMouseDown => Some(MouseEvent::Press(MouseButton::Middle)),
                     CGEventType::OtherMouseUp => Some(MouseEvent::Release(MouseButton::Middle)),
-                    CGEventType::MouseMoved => {
+                    CGEventType::MouseMoved
+                    | CGEventType::_LeftMouseDragged
+                    | CGEventType::_RightMouseDragged => {
                         let point = CGEventGetLocation(cg_event);
                         Some(MouseEvent::AbsoluteMove(point.x as i32, point.y as i32))
                     }
