@@ -100,8 +100,8 @@ impl DarwinMouseManager {
                     CGEventType::OtherMouseDown => Some(MouseEvent::Press(MouseButton::Middle)),
                     CGEventType::OtherMouseUp => Some(MouseEvent::Release(MouseButton::Middle)),
                     CGEventType::MouseMoved
-                    | CGEventType::_LeftMouseDragged
-                    | CGEventType::_RightMouseDragged => {
+                    | CGEventType::LeftMouseDragged
+                    | CGEventType::RightMouseDragged => {
                         let point = CGEventGetLocation(cg_event);
                         Some(MouseEvent::AbsoluteMove(point.x as i32, point.y as i32))
                     }
@@ -151,7 +151,10 @@ impl DarwinMouseManager {
                         + (1 << CGEventType::OtherMouseDown as u64)
                         + (1 << CGEventType::OtherMouseUp as u64)
                         + (1 << CGEventType::MouseMoved as u64)
-                        + (1 << CGEventType::ScrollWheel as u64),
+                        + (1 << CGEventType::ScrollWheel as u64)
+                        + (1 << CGEventType::LeftMouseDragged as u64)
+                        + (1 << CGEventType::RightMouseDragged as u64)
+                        + (1 << CGEventType::OtherMouseDragged as u64),
                     Some(mouse_on_event_callback),
                     null_mut(),
                 ));
@@ -357,12 +360,12 @@ enum CGEventType {
     RightMouseDown = 3,
     RightMouseUp = 4,
     MouseMoved = 5,
-    _LeftMouseDragged = 6,
-    _RightMouseDragged = 7,
+    LeftMouseDragged = 6,
+    RightMouseDragged = 7,
     ScrollWheel = 22,
     OtherMouseDown = 25,
     OtherMouseUp = 26,
-    _OtherMouseDragged = 27,
+    OtherMouseDragged = 27,
 }
 
 #[repr(C)]
