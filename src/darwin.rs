@@ -8,8 +8,11 @@ use crate::error::Error;
 use std::collections::HashMap;
 use std::os::raw::{c_double, c_int, c_long, c_uint, c_ulong, c_void};
 use std::ptr::null_mut;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::thread;
+
+static STOP_EVENT_LISTENER: AtomicBool = AtomicBool::new(false);
 
 static mut TAP_EVENT_REF: Option<CFTypeRef> = None;
 static mut CALLBACKS: Option<Mutex<HashMap<CallbackId, Box<dyn Fn(&MouseEvent) + Send>>>> = None;
@@ -91,6 +94,10 @@ impl DarwinMouseManager {
                 cg_event: CGEventRef,
                 _user_info: *mut c_void,
             ) -> CGEventRef {
+                if STOP_EVENT_LISTENER.load(Ordering::Relaxed) {
+                    STOP_EVENT_LISTENER.store(false, Ordering::Relaxed);
+                    CFRunLoopStop(CFRunLoopGetCurrent());
+                }
                 // Construct the library's MouseEvent
                 let mouse_event = match event_type {
                     CGEventType::LeftMouseDown => Some(MouseEvent::Press(MouseButton::Left)),
@@ -169,6 +176,17 @@ impl DarwinMouseManager {
         });
 
         Ok(())
+    }
+
+    fn stop_listener(&mut self) {
+        STOP_EVENT_LISTENER.store(true, Ordering::Relaxed);
+
+        unsafe {
+            if let Some(tap) = TAP_EVENT_REF {
+                CGEventTapEnable(tap, false);
+                CFRunLoopStop(CFRunLoopGetCurrent());
+            }
+        }
     }
 }
 
@@ -285,10 +303,21 @@ impl MouseActions for DarwinMouseManager {
     fn unhook(&mut self, callback_id: CallbackId) -> Result<(), Error> {
         unsafe {
             match &mut CALLBACKS {
-                Some(callbacks) => match callbacks.lock().unwrap().remove(&callback_id) {
-                    Some(_) => Ok(()),
-                    None => Err(Error::UnhookFailed),
-                },
+                Some(callbacks) => {
+                    let mut callbacks_ = callbacks.lock().unwrap();
+                    let mut ret_val: Result<(), Error>;
+                    ret_val = match callbacks_.remove(&callback_id) {
+                        Some(_) => Ok(()),
+                        None => Err(Error::UnhookFailed),
+                    };
+                    if callbacks_.is_empty() {
+                        if self.is_listening {
+                            self.stop_listener();
+                            self.is_listening = false;
+                        }
+                    }
+                    ret_val
+                }
                 None => {
                     initialize_callbacks();
                     self.unhook(callback_id)
@@ -298,6 +327,10 @@ impl MouseActions for DarwinMouseManager {
     }
 
     fn unhook_all(&mut self) -> Result<(), Error> {
+        if (self.is_listening) {
+            self.stop_listener();
+            self.is_listening = false;
+        }
         unsafe {
             match &mut CALLBACKS {
                 Some(callbacks) => {
@@ -455,4 +488,5 @@ extern "C" {
     fn CFRunLoopGetCurrent() -> *mut c_void;
     fn CFRunLoopAddSource(rl: *mut c_void, source: *mut c_void, mode: *const c_void);
     fn CFRunLoopRun();
+    fn CFRunLoopStop(rl: *mut c_void);
 }
